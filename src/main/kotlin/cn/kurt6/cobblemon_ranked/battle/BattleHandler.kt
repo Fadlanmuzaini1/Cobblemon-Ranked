@@ -33,6 +33,24 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
 object BattleHandler {
+        /**
+     * Held-item ban check. Supports plain ids ("minecraft:prismarine_crystals") and ids with a
+     * custom_model_data filter: "minecraft:prismarine_crystals[custom_model_data=10001]" or a
+     * range "minecraft:prismarine_crystals[custom_model_data=10001-10009]".
+     */
+    private fun isHeldItemBanned(stack: net.minecraft.item.ItemStack, itemId: String, banned: Set<String>): Boolean {
+        if (itemId in banned) return true
+        val cmd = stack.get(net.minecraft.component.DataComponentTypes.CUSTOM_MODEL_DATA)?.value() ?: return false
+        val prefix = "$itemId[custom_model_data="
+        return banned.any { entry ->
+            if (!entry.startsWith(prefix) || !entry.endsWith("]")) return@any false
+            val spec = entry.substring(prefix.length, entry.length - 1).trim()
+            val parts = spec.split("-")
+            val from = parts[0].trim().toIntOrNull() ?: return@any false
+            val to = if (parts.size > 1) parts[1].trim().toIntOrNull() ?: return@any false else from
+            cmd in from..to
+        }
+    }
     internal val logger = LoggerFactory.getLogger(BattleHandler::class.java)
 
     internal val rankedBattles = ConcurrentHashMap<UUID, String>()
@@ -221,7 +239,7 @@ object BattleHandler {
             val stack = pokemon.heldItem()
             if (!stack.isEmpty) {
                 val itemId = Registries.ITEM.getId(stack.item).toString().lowercase()
-                if (itemId in bannedHeldItems) {
+                if (isHeldItemBanned(stack, itemId, bannedHeldItems)) {
                     violations.add("banned_held:${pokemon.species.name}($itemId)")
                 }
             }
